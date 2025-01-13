@@ -280,7 +280,14 @@ class ColorPickerApp:
 
 if __name__ == "__main__":
     app = ColorPickerApp()
-    keyboard.add_hotkey("+".join(DEFAULT_CONFIG["settings_hotkey"]), app.show_settings_window)
-    keyboard.add_hotkey("ctrl+shift+alt+i", app.show_settings_window)  # Резервный хоткей
+    keyboard.add_hotkey("+".join(app.config["settings_hotkey"]), app.show_settings_window)
+
+    # Добавляем резервный хоткей только если он отличается от пользовательского
+    default_hotkey = "+".join(DEFAULT_CONFIG["settings_hotkey"])
+    user_hotkey = "+".join(app.config["settings_hotkey"])
+
+    if default_hotkey != user_hotkey:
+        keyboard.add_hotkey(default_hotkey, app.show_settings_window)
+        print("америка европа")
 
     app.root.mainloop()

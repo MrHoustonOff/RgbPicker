@@ -14,9 +14,9 @@ PREVIEW_SIZE = 30
 LABEL_WIDTH = 20
 LABEL_HEIGHT = 2
 DEFAULT_CONFIG = {
-    "update_interval": 100,
+    "update_interval": 16,
     "main_hotkey": ["ctrl", "shift"],
-    "settings_hotkey": ["ctrl", "shift", "alt", "i"]
+    "settings_hotkey": ["ctrl", "alt", "i"]
 }
 CONFIG_FILE = os.path.join(os.getcwd(), "config.json")
 
@@ -134,7 +134,7 @@ class ColorPickerApp:
 
         tk.Label(self.settings_window, text="Update Interval (ms):", bg="black", fg="white").pack(pady=5)
         self.update_interval_slider = tk.Scale(
-            self.settings_window, from_=1, to=1000, orient=tk.HORIZONTAL, bg="black", fg="white", troughcolor="gray"
+            self.settings_window, from_=1, to=100, orient=tk.HORIZONTAL, bg="black", fg="white", troughcolor="gray"
         )
         self.update_interval_slider.set(self.update_interval)
         self.update_interval_slider.pack(pady=5)
@@ -200,6 +200,7 @@ class ColorPickerApp:
             if not self.settings_window.winfo_exists():
                 self.create_settings_window()  # Пересоздаём окно, если оно было удалено
             self.settings_window.deiconify()
+            self.settings_window.focus_set()
         except tk.TclError as e:
             print(f"Ошибка показа окна настроек: {e}")
 

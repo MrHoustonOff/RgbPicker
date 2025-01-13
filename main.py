@@ -1,16 +1,34 @@
 import pyautogui
 import keyboard
-from PIL import ImageGrab
+from PIL import Image
 import tkinter as tk
 from ctypes import windll
+from screeninfo import get_monitors
+import mss  # Новая библиотека для захвата экрана
 
 
 class ColorPickerApp:
     def __init__(self):
         self.root = tk.Tk()
         self.canvas = tk.Toplevel(self.root)
+        self.monitors = self.get_monitors_info()
+        self.sct = mss.mss()  # Инициализация mss
         self.setup_windows()
         self.update_label()
+
+    def get_monitors_info(self):
+        """Получить информацию обо всех мониторах."""
+        return get_monitors()
+
+    def get_current_monitor(self, x, y):
+        """Определить, на каком мониторе находится курсор."""
+        for monitor in self.monitors:
+            if (
+                monitor.x <= x < monitor.x + monitor.width
+                and monitor.y <= y < monitor.y + monitor.height
+            ):
+                return monitor
+        return None
 
     def setup_windows(self):
         """Настройка основных окон."""
@@ -30,10 +48,10 @@ class ColorPickerApp:
             fg="white",
             padx=5,
             pady=5,
-            width=20,  # Фиксированная ширина в символах
-            height=2,  # Фиксированная высота в строках
-            anchor="w",  # Выравнивание текста по левому краю
-            justify="left",
+            width=20,
+            height=2,
+            anchor="center",
+            justify="center",
         )
         self.label.pack(side=tk.LEFT)
 
@@ -60,12 +78,34 @@ class ColorPickerApp:
 
     def get_pixel_color(self, x, y):
         """Получить цвет пикселя на указанных координатах."""
-        return ImageGrab.grab(bbox=(x, y, x + 1, y + 1)).getpixel((0, 0))
+        monitor = self.get_current_monitor(x, y)
+        if not monitor:
+            return 0, 0, 0  # Если монитор не найден, возвращаем черный цвет
+
+        # Настраиваем область для mss
+        monitor_region = {
+            "top": y,
+            "left": x,
+            "width": 1,
+            "height": 1,
+        }
+
+        # Захватываем пиксель
+        sct_img = self.sct.grab(monitor_region)
+        return sct_img.pixel(0, 0)  # Получаем цвет пикселя
 
     def move_window_safe(self, window, x, y, dx=0, dy=0):
-        """Переместить окно, чтобы оно оставалось видимым и не перекрывало курсор."""
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
+        """Переместить окно на корректное место на экране с учетом всех мониторов."""
+        monitor = self.get_current_monitor(x, y)
+        if not monitor:
+            return  # Если монитор не найден, ничего не делаем
+
+        screen_x, screen_y, screen_width, screen_height = (
+            monitor.x,
+            monitor.y,
+            monitor.width,
+            monitor.height,
+        )
 
         window_width = window.winfo_reqwidth()
         window_height = window.winfo_reqheight()
@@ -73,14 +113,14 @@ class ColorPickerApp:
         x += dx
         y += dy
 
-        if x + window_width > screen_width:
+        if x + window_width > screen_x + screen_width:
             x -= (window_width + 20)
-        if y + window_height > screen_height:
+        if y + window_height > screen_y + screen_height:
             y -= (window_height + 20)
-        if x < 0:
-            x = 20
-        if y < 0:
-            y = 20
+        if x < screen_x:
+            x = screen_x + 20
+        if y < screen_y:
+            y = screen_y + 20
 
         window.geometry(f"+{x}+{y}")
 

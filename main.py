@@ -1,3 +1,5 @@
+import sys
+
 import pyautogui
 import keyboard
 import tkinter as tk
@@ -6,9 +8,12 @@ from screeninfo import get_monitors
 import mss
 import json
 import os
+import platform
 from typing import Optional, Tuple
 from tkinter import messagebox
-
+import pystray
+from pystray import MenuItem as item
+from PIL import Image, ImageDraw
 
 PREVIEW_SIZE = 30
 LABEL_WIDTH = 20
@@ -18,15 +23,27 @@ DEFAULT_CONFIG = {
     "main_hotkey": ["ctrl", "shift"],
     "settings_hotkey": ["ctrl", "alt", "i"]
 }
-CONFIG_FILE = os.path.join(os.getcwd(), "config.json")
 
+def get_config_path() -> str:
+    if platform.system() == "Windows":
+        app_data_dir = os.getenv("LOCALAPPDATA", os.path.expanduser("~\\AppData\\Local"))
+    elif platform.system() == "Darwin":  # macOS
+        app_data_dir = os.path.expanduser("~/Library/Application Support")
+    else:
+        app_data_dir = os.getenv("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+
+    app_folder = os.path.join(app_data_dir, "BestRgbPicker")
+    os.makedirs(app_folder, exist_ok=True)
+    return os.path.join(app_folder, "config.json")
+
+CONFIG_FILE = get_config_path()
 
 class ColorPickerApp:
     def __init__(self):
+        self.iconPath = icon_path = os.path.join(os.path.dirname(__file__), 'favicon.ico')
         self.config = self.load_config()
         self.update_interval = self.config["update_interval"]
         self.main_hotkey = set(self.config["main_hotkey"])
-        self.settings_hotkey = set(self.config["settings_hotkey"])
 
         self.root = tk.Tk()
         self.canvas = tk.Toplevel(self.root)
@@ -37,6 +54,25 @@ class ColorPickerApp:
         self.setup_windows()
         self.create_settings_window()
         self.update_label()
+
+        # Инициализация трея
+        self.icon = self.create_tray_icon()
+        self.icon.run_detached()  # Запускаем трей в отдельном потоке
+
+    def create_tray_icon(self):
+        icon_image = Image.open(self.iconPath)  # Замените на путь к вашему файлу
+        icon_image = icon_image.resize((32, 32))
+
+        menu = (item('Settings', self.show_settings_window),
+                item('Exit', self.exit_program))
+
+        icon = pystray.Icon("RGB Picker", icon_image, menu=menu)
+        return icon
+
+    def exit_program(self, icon, item):
+        icon.stop()  # Останавливаем pystray
+        self.root.quit()  # Завершаем главный цикл tkinter
+        sys.exit()  # Завершаем процесс
 
     def load_config(self):
         if not os.path.exists(CONFIG_FILE):
@@ -55,20 +91,6 @@ class ColorPickerApp:
                 json.dump(config, file, indent=4)
         except IOError:
             print("Ошибка сохранения конфигурации.")
-
-    def validate_hotkey(self, hotkey: list) -> bool:
-        """Проверяет, что горячая клавиша корректна и может быть зарегистрирована."""
-        if not hotkey or any(not key.strip() for key in hotkey):  # Проверка на пустые ключи
-            return False
-        try:
-            keyboard.parse_hotkey("+".join(hotkey))  # Проверяет синтаксис клавиш
-            return True
-        except ValueError:
-            return False
-
-    def are_hotkeys_conflicting(self, hotkey1: list, hotkey2: list) -> bool:
-        """Проверяет, являются ли горячие клавиши полностью идентичными."""
-        return set(hotkey1) == set(hotkey2)
 
     def get_monitors_info(self):
         return get_monitors()
@@ -144,12 +166,6 @@ class ColorPickerApp:
         self.main_hotkey_entry.insert(0, "+".join(self.config["main_hotkey"]))
         self.main_hotkey_entry.pack(pady=5)
 
-        tk.Label(self.settings_window, text="Settings Hotkey (e.g., ctrl+shift+alt+i):", bg="black", fg="white").pack(
-            pady=5)
-        self.settings_hotkey_entry = tk.Entry(self.settings_window, bg="gray", fg="white", insertbackground="white")
-        self.settings_hotkey_entry.insert(0, "+".join(self.config["settings_hotkey"]))
-        self.settings_hotkey_entry.pack(pady=5)
-
         tk.Label(self.settings_window, text="Made By MrHouston", bg="black", fg="white", anchor="e").pack(
             side=tk.BOTTOM, pady=5, padx=5)
 
@@ -162,31 +178,20 @@ class ColorPickerApp:
         try:
             update_interval = int(self.update_interval_slider.get())
             main_hotkey = self.main_hotkey_entry.get().split("+")
-            settings_hotkey = self.settings_hotkey_entry.get().split("+")
 
             if not self.validate_hotkey(main_hotkey):
                 messagebox.showerror("Invalid Input", "Invalid main hotkey. Please check the format.")
                 return
 
-            if not self.validate_hotkey(settings_hotkey):
-                messagebox.showerror("Invalid Input", "Invalid settings hotkey. Please check the format.")
-                return
-
-            if self.are_hotkeys_conflicting(main_hotkey, settings_hotkey):
-                messagebox.showerror("Invalid Input", "Main and settings hotkeys must not be identical.")
-                return
-
             self.config.update({
                 "update_interval": update_interval,
-                "main_hotkey": main_hotkey,
-                "settings_hotkey": settings_hotkey,
+                "main_hotkey": main_hotkey
             })
 
             self.save_config(self.config)
 
             self.update_interval = update_interval
             self.main_hotkey = set(main_hotkey)
-            self.settings_hotkey = set(settings_hotkey)
 
             print("Settings saved successfully.")
             self.settings_window.withdraw()
@@ -194,11 +199,19 @@ class ColorPickerApp:
         except ValueError:
             print("Invalid settings. Please check your input.")
 
+    def validate_hotkey(self, hotkey: list) -> bool:
+        if not hotkey or any(not key.strip() for key in hotkey):
+            return False
+        try:
+            keyboard.parse_hotkey("+".join(hotkey))
+            return True
+        except ValueError:
+            return False
+
     def show_settings_window(self):
         try:
-            # Проверяем, существует ли окно и активно ли оно
             if not self.settings_window.winfo_exists():
-                self.create_settings_window()  # Пересоздаём окно, если оно было удалено
+                self.create_settings_window()
             self.settings_window.deiconify()
             self.settings_window.focus_set()
         except tk.TclError as e:
@@ -281,14 +294,5 @@ class ColorPickerApp:
 
 if __name__ == "__main__":
     app = ColorPickerApp()
-    keyboard.add_hotkey("+".join(app.config["settings_hotkey"]), app.show_settings_window)
-
-    # Добавляем резервный хоткей только если он отличается от пользовательского
-    default_hotkey = "+".join(DEFAULT_CONFIG["settings_hotkey"])
-    user_hotkey = "+".join(app.config["settings_hotkey"])
-
-    if default_hotkey != user_hotkey:
-        keyboard.add_hotkey(default_hotkey, app.show_settings_window)
-        print("америка европа")
-
+    keyboard.add_hotkey("+".join(DEFAULT_CONFIG["settings_hotkey"]), app.show_settings_window)
     app.root.mainloop()

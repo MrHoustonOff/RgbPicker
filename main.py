@@ -1,5 +1,7 @@
+import msvcrt
 import sys
 
+import psutil
 import pyautogui
 import keyboard
 import tkinter as tk
@@ -24,6 +26,7 @@ DEFAULT_CONFIG = {
     "settings_hotkey": ["ctrl", "alt", "i"]
 }
 
+
 def get_config_path() -> str:
     if platform.system() == "Windows":
         app_data_dir = os.getenv("LOCALAPPDATA", os.path.expanduser("~\\AppData\\Local"))
@@ -37,6 +40,54 @@ def get_config_path() -> str:
     return os.path.join(app_folder, "config.json")
 
 CONFIG_FILE = get_config_path()
+LOCK_FILE = "app.lock"
+
+def get_lock_file_path() -> str:
+    if platform.system() == "Windows":
+        app_data_dir = os.getenv("LOCALAPPDATA", os.path.expanduser("~\\AppData\\Local"))
+    elif platform.system() == "Darwin":  # macOS
+        app_data_dir = os.path.expanduser("~/Library/Application Support")
+    else:
+        app_data_dir = os.getenv("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+    app_folder = os.path.join(app_data_dir, "BestRgbPicker")
+    os.makedirs(app_folder, exist_ok=True)
+    return os.path.join(app_folder, LOCK_FILE)
+
+def check_if_already_running():
+    lock_file_path = get_lock_file_path()
+    current_pid = os.getpid()
+    try:
+        if os.path.exists(lock_file_path):
+            with open(lock_file_path, "r") as lock_file:
+                existing_pid = int(lock_file.read().strip())
+                if psutil.pid_exists(existing_pid) and existing_pid != current_pid:
+                    show_error_message("Программа уже запущена!")
+                    sys.exit(1)
+        # Обновляем или создаем lock-файл с текущим PID
+        with open(lock_file_path, "w") as lock_file:
+            lock_file.write(str(current_pid))
+    except Exception as e:
+        show_error_message(f"Ошибка при проверке запуска: {e}")
+        sys.exit(1)
+
+def remove_lock_file():
+    try:
+        lock_file_path = get_lock_file_path()
+        if os.path.exists(lock_file_path):
+            with open(lock_file_path, "r") as lock_file:
+                existing_pid = int(lock_file.read().strip())
+                if existing_pid == os.getpid():  # Удаляем только если файл блокировки наш
+                    os.remove(lock_file_path)
+    except Exception as e:
+        print(f"Ошибка при удалении lock-файла: {e}")
+
+def show_error_message(message: str):
+    root = tk.Tk()
+    root.withdraw()  # Скрытие главного окна
+    messagebox.showerror("Ошибка", message)
+    root.destroy()
+    sys.exit()
+
 
 class ColorPickerApp:
     def __init__(self):
@@ -291,8 +342,13 @@ class ColorPickerApp:
 
         self.root.after(self.update_interval, self.update_label)
 
-
 if __name__ == "__main__":
-    app = ColorPickerApp()
-    keyboard.add_hotkey("+".join(DEFAULT_CONFIG["settings_hotkey"]), app.show_settings_window)
-    app.root.mainloop()
+    try:
+        check_if_already_running()
+        app = ColorPickerApp()
+        keyboard.add_hotkey("+".join(DEFAULT_CONFIG["settings_hotkey"]), app.show_settings_window)
+        app.root.mainloop()
+    except Exception as e:
+        show_error_message(f"Произошла ошибка: {e}")
+    finally:
+        remove_lock_file()

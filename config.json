@@ -1,0 +1,13 @@
+{
+    "update_interval": 1,
+    "main_hotkey": [
+        "ctrl",
+        "shift"
+    ],
+    "settings_hotkey": [
+        "ctrl",
+        "shift",
+        "alt",
+        "i"
+    ]
+}
